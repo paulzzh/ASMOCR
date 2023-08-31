@@ -1,0 +1,5 @@
+paddleocr>=2.0.1
+scikit-image
+adbutils
+numpy
+opencv-python
