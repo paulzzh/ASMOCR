@@ -1,7 +1,7 @@
 import time,sqlite3,difflib,cv2
 import win32api,win32gui,win32ui,win32con
 import numpy as np
-from paddleocr import PaddleOCR
+from PPOCR_api import GetOcrApi
 from functools import cmp_to_key
 
 print("================================")
@@ -11,7 +11,6 @@ print("================================")
 print("请先启动dmm客户端再运行脚本")
 print("之后进入小游戏会自动点击")
 print("================================")
-print("第一次运行可能要下载PaddleOCR模型 需要等待一会儿")
 
 hwnd = win32gui.FindWindow(None, "PrincessConnectReDive")
 win32gui.SetForegroundWindow(hwnd)
@@ -38,7 +37,8 @@ b3 = (32+170, 625)
 b4 = (32+510, 625)
 bs = [b1,b2,b3,b4]
 
-ocr = PaddleOCR(lang="japan",show_log=False,use_angle_cls=True)
+argument = {'config_path': "models/config_japan.txt"}
+ocr = GetOcrApi(r".\PaddleOCR-json\PaddleOCR-json.exe", argument)
 
 #读小游戏数据
 def query_jp_db(query, args=(), one=False):
@@ -94,16 +94,19 @@ def boxesi(boxes):
     return temp
 
 def click(pos):
-    win32api.SetCursorPos([xbase+pos[0],ybase+pos[1]+50])
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0,0,0,0)
-    #time.sleep(0.2)
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0,0,0,0)
-    time.sleep(0.5)
+    x=xbase+pos[0]
+    y=ybase+pos[1]+50
+    win32api.SetCursorPos([x,y])
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN,x,y)
+    win32api.SetCursorPos([x,y])
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,x,y)
 
 def onelineocr(frame):
-    result = ocr.ocr(frame)
-    txts = [detection[1][0] for line in result for detection in line]
-    boxes = [detection[0] for line in result for detection in line]
+    result = ocr.runBytes(cv2.imencode('.png', frame)[1].tobytes())
+    if not result["code"] == 100:
+        return ""
+    txts = [line["text"] for line in result["data"]]
+    boxes = [line["box"] for line in result["data"]]
     
     sorted_points = sorted(boxesi(boxes), key=cmp_to_key(cmp))
     texts=""
@@ -133,10 +136,10 @@ while True:
         diff = diff.astype(np.uint8)
         frameg_old=frameg
         if np.count_nonzero(diff)<1000:
-            if wait>=20: #可能结算后了
+            if wait>=3: #可能结算后了
                 click(retry)
                 wait=0
-            time.sleep(0.5)
+            time.sleep(2)
             wait+=1
             continue
     wait=0
@@ -157,6 +160,8 @@ while True:
     print("================================")
     print("OCR:",ques)
     print("QUE:","{:.2%}".format(score),data["detail"])
+    
+    time.sleep(0.5) #似乎识别太快了 点太快会点不动
     
     asm_id=data["asm_id"]
     if asm_id<2000000: #判断

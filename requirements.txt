@@ -1,4 +1,3 @@
-paddleocr>=2.0.1
 numpy
 opencv_python
 pywin32
