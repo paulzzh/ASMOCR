@@ -1,21 +1,44 @@
-#https://github.com/paulzzh/ASMOCR
-import sqlite3,difflib,cv2
+import time,sqlite3,difflib,cv2
+import win32api,win32gui,win32ui,win32con
 import numpy as np
-from adbutils import adb
-from paddleocr import PaddleOCR, draw_ocr
-from skimage.metrics import structural_similarity as compare_ssim
+from paddleocr import PaddleOCR
 from functools import cmp_to_key
 
-d = adb.device() #手机开USB调试模式 插数据线连接 手机上要点一下同意
-ocr = PaddleOCR(lang="japan")
+print("================================")
+print("源代码: https://github.com/paulzzh/ASMOCR")
+print("不得用于商业用途 严禁倒卖")
+print("================================")
+print("请先启动dmm客户端再运行脚本")
+print("之后进入小游戏会自动点击")
+print("================================")
+print("第一次运行可能要下载PaddleOCR模型 需要等待一会儿")
 
-#设备不同 自行填写 看pos.png
-#截个图 拿画图打开 然后选中题目黑色区域 左下角就是要填的参数
-x=320
-y=220
-w=1020
-h=280
-#下面的不要动了
+hwnd = win32gui.FindWindow(None, "PrincessConnectReDive")
+win32gui.SetForegroundWindow(hwnd)
+left, top, right, bottom = win32gui.GetClientRect(hwnd)
+xbase, ybase, _, _ = win32gui.GetWindowRect(hwnd)
+width = right - left
+height = bottom - top
+print(width,height) #DMM端分辨率应该固定是1280x720吧
+WDC = win32gui.GetDC(hwnd)
+DC = win32ui.CreateDCFromHandle(WDC)
+CDC = DC.CreateCompatibleDC()
+BMP = win32ui.CreateBitmap()
+BMP.CreateCompatibleBitmap(DC, width, height)
+CDC.SelectObject(BMP)
+
+yes = (32+170, 550)
+no = (32+510, 550)
+sub = (1156, 584)
+retry = (950, 655)
+
+b1 = (32+170, 475)
+b2 = (32+510, 475)
+b3 = (32+170, 625)
+b4 = (32+510, 625)
+bs = [b1,b2,b3,b4]
+
+ocr = PaddleOCR(lang="japan",show_log=False,use_angle_cls=True)
 
 #读小游戏数据
 def query_jp_db(query, args=(), one=False):
@@ -47,6 +70,9 @@ def diff_asm(obj):
     except:
         return 0.0
 
+def diff_ab(a,b):
+    return difflib.SequenceMatcher(None, a, b).quick_ratio()
+
 def cmp(t1, t2): #从上到下 从左到右
     if t1[1]<t2[1]:
         return -1
@@ -67,61 +93,132 @@ def boxesi(boxes):
         temp.append([x,y,i])
     return temp
 
-frameg_old=None
-im_show=None
+def click(pos):
+    win32api.SetCursorPos([xbase+pos[0],ybase+pos[1]+50])
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0,0,0,0)
+    #time.sleep(0.2)
+    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0,0,0,0)
+    time.sleep(0.5)
 
-while True:
-    image = d.screenshot() #截图
-    frame = cv2.cvtColor(np.array(image, dtype=np.uint8), cv2.COLOR_RGB2BGR)
-    frame = frame[y:y+h, x:x+w] #剪裁到只有题目
-    
-    frameg=cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    if frameg_old is not None:
-        #判断前后屏相似 如果变化不大那么不进行OCR(太慢了)
-        (score, diff) = compare_ssim(frameg_old, frameg, full=True)
-        frameg_old=frameg
-        #print(score)
-        if score>0.98:
-            cv2.imshow("w",im_show)
-            cv2.waitKey(1)
-            continue
-    frameg_old=frameg
-    
+def onelineocr(frame):
     result = ocr.ocr(frame)
     txts = [detection[1][0] for line in result for detection in line]
     boxes = [detection[0] for line in result for detection in line]
     
-    
     sorted_points = sorted(boxesi(boxes), key=cmp_to_key(cmp))
-    ques=""
+    texts=""
     for pointi in sorted_points:
         _,_,i=pointi
-        ques+=txts[i]
+        texts+=txts[i]
+    return texts
+
+frameg_old=None
+im_show=None
+asm_id=None
+wait=0
+while True:
+    CDC.BitBlt((left,top),(width,height),DC,(0,0),win32con.SRCCOPY)
+    bitmap=BMP.GetBitmapBits(True)
+    frame = np.frombuffer(bitmap, dtype=np.uint8)
+    frame.shape = (height, width, 4)
+    frame = frame[:,:,:3] #删除alpha通道
     
-    #ques = max(txts, key=len, default='')
+    quesimg = frame[167:167+163, 32:32+678] #剪裁到只有题目
+    
+    frameg=cv2.cvtColor(quesimg, cv2.COLOR_BGR2GRAY)
+    if frameg_old is not None:
+        #判断前后屏相似 如果变化不大那么不进行OCR(太慢了)
+        #(score, diff) = compare_ssim(frameg_old, frameg, full=True)
+        diff = cv2.absdiff(frameg_old, frameg)
+        diff = diff.astype(np.uint8)
+        frameg_old=frameg
+        if np.count_nonzero(diff)<1000:
+            if wait>=20: #可能结算后了
+                click(retry)
+                wait=0
+            time.sleep(0.5)
+            wait+=1
+            continue
+    wait=0
+    frameg_old=frameg
+    
+    ques=onelineocr(quesimg)
+    data = max(asm_data, key=diff_asm, default='')
+    score = diff_asm(data)
+    if asm_id == data["asm_id"] or score<0.7: #重复或匹配度低
+        continue
+    
+    img1 = frame[425:425+100, 32:32+320] #左上
+    img2 = frame[425:425+100, 395:395+320] #右上
+    img3 = frame[575:575+100, 32:32+320] #左下
+    img4 = frame[575:575+100, 395:395+320] #右下
+    ansimgs = [img1,img2,img3,img4]
+    
     print("================================")
     print("OCR:",ques)
-    data = max(asm_data, key=diff_asm, default='')
-    print("QUE:","{:.2%}".format(diff_asm(data)),data["detail"])
+    print("QUE:","{:.2%}".format(score),data["detail"])
     
     asm_id=data["asm_id"]
     if asm_id<2000000: #判断
         ans = asm_true_or_false_data_dict[asm_id]
         print("ANS:",ans["correct_answer"]==1)
+        if ans["correct_answer"]==1:
+            click(yes)
+        else:
+            click(no)
         
     elif asm_id<3000000: #单选
         ans = asm_4_choice_data_dict[asm_id]
-        print("ANS:",ans["choice_"+str(ans["correct_answer"])])
+        ans_str=ans["choice_"+str(ans["correct_answer"])]
+        print("ANS:",ans_str)
+        
+        score = 0.0
+        best = 0
+        ans_ocr = []
+        for i in range(4):
+            an = onelineocr(ansimgs[i])
+            ans_ocr.append(an)
+            if an == ans_str:
+                score = 1.0
+                best = i
+                break
+            if diff_ab(an,ans_str) > score:
+                score = diff_ab(an,ans_str)
+                best = i
+        
+        print("OCR:","{:.2%}".format(score),ans_ocr[best])
+        click(bs[best])
         
     else: #多选
         ans = asm_many_answers_data_dict[asm_id]
+        ans_strs = []
         for i in ["1","2","3","4"]:
             if ans["is_correct_"+i]==1:
+                ans_strs.append(ans["choice_"+i])
                 print("ANS:",ans["choice_"+i])
+        
+        ans_ocr = []
+        for i in range(4):
+            an = onelineocr(ansimgs[i])
+            ans_ocr.append(an)
+        scores = []
+        bests = []
+        for ans_str in ans_strs:
+            score = 0.0
+            best = 0
+            for i in range(4):
+                if diff_ab(ans_ocr[i],ans_str) > score:
+                    score = diff_ab(ans_ocr[i],ans_str)
+                    best = i
+            scores.append(score)
+            bests.append(best)
+        
+        for i in range(len(scores)):
+            print("OCR:","{:.2%}".format(scores[i]),ans_ocr[bests[i]])
+        for i in range(len(scores)):
+            click(bs[bests[i]])
+        
     #print(ans)
     print("================================")
     
-    scores = [detection[1][1] for line in result for detection in line]
-    im_show = draw_ocr(frame, boxes, txts, scores)
-    cv2.imshow("w",im_show)
-    cv2.waitKey(1)
+    click(sub)
