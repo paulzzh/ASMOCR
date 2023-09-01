@@ -100,6 +100,7 @@ def click(pos):
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN,x,y)
     win32api.SetCursorPos([x,y])
     win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP,x,y)
+    time.sleep(0.5)
 
 def onelineocr(frame):
     result = ocr.runBytes(cv2.imencode('.png', frame)[1].tobytes())
