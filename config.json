@@ -1,0 +1,62 @@
+{
+    #窗口标题
+    title: PrincessConnectReDive
+    
+    
+    #以下为xy坐标
+    #提交按钮 中心坐标
+    sub: {
+        x: 1156
+        y: 584
+    }
+    
+    #再来一次按钮 中心坐标
+    retry: {
+        x: 950
+        y: 655
+    }
+    
+    
+    #以下为OCR识别区bbox
+    #题目区域
+    question: {
+        left: 32
+        top: 167
+        right: 710
+        bottom: 330
+    }
+    
+    #四选题 左上按钮区域
+    topleft: {
+        left: 32
+        top: 425
+        right: 352
+        bottom: 525
+    }
+    
+    #四选题 右上按钮区域
+    topright: {
+        left: 395
+        top: 425
+        right: 715
+        bottom: 525
+    }
+    
+    #四选题 左下按钮区域
+    bottomleft: {
+        left: 32
+        top: 575
+        right: 352
+        bottom: 675
+    }
+    
+    #四选题 右下按钮区域
+    bottomright: {
+        left: 395
+        top: 575
+        right: 715
+        bottom: 675
+    }
+    
+    #配置文件结束
+}
